@@ -56,6 +56,11 @@ pub enum Command {
     #[command(
         long_about = "Serve requests based on a config.",
         after_long_help = "Serves requests based on the configuration specified in <config-file>.\n\n\
+            A `shutdownDelayMs` of 0 falls back to WORKERD_SHUTDOWN_DELAY_MS: how many \
+            milliseconds to keep serving after SIGTERM before draining, for load balancers that \
+            go on sending connections for a while. A second SIGTERM drains at once. The \
+            supervisor's grace period must cover the delay and the drain, in cluster mode the \
+            delay plus `cluster.stopTimeoutMs`.\n\n\
             Cluster mode (`Config.cluster`, with --experimental): instances that share an \
             S3-compatible (s3://) or Google Cloud Storage (gs://) bucket serve Durable Objects \
             together. For an s3:// bucket, each `cluster.bucketOptions` setting falls back to an \
