@@ -60,7 +60,8 @@ pub enum Command {
             milliseconds to keep serving after SIGTERM before draining, for load balancers that \
             go on sending connections for a while. A second SIGTERM drains at once. The \
             supervisor's grace period must cover the delay and the drain, in cluster mode the \
-            delay plus `cluster.stopTimeoutMs`.\n\n\
+            delay plus `cluster.stopTimeoutMs`. A cluster instance's `GET /ready` answers 503 \
+            from the first SIGTERM on.\n\n\
             Cluster mode (`Config.cluster`, with --experimental): instances that share an \
             S3-compatible (s3://) or Google Cloud Storage (gs://) bucket serve Durable Objects \
             together. For an s3:// bucket, each `cluster.bucketOptions` setting falls back to an \

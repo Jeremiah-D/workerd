@@ -36,6 +36,7 @@ use crate::bridge::ffi;
 use crate::channels::Channel;
 use crate::cluster;
 use crate::cluster::ClusterNode;
+use crate::cluster::Ready;
 use crate::config::Deployments;
 use crate::config::Factory;
 use crate::config::Overrides;
@@ -445,9 +446,9 @@ pub async fn run(
     tokio::task::yield_now().await;
     let mut drain = std::pin::pin!(drain);
     let pending = drain.next().now_or_never().is_some();
-    // Whatever way this returns, the cluster port answers that this instance is not ready.
-    let _serving = server.cluster().map(ClusterNode::serving);
-    let drain = std::pin::pin!(drain_due(server.factory(), delay, pending, drain));
+    // The cluster port answers ready until the instance is told to drain or this returns.
+    let ready = server.cluster().map(ClusterNode::ready);
+    let drain = std::pin::pin!(drain_due(server.factory(), delay, pending, ready, drain));
     let mut serving = std::pin::pin!(serve_listeners(&mut listeners).fuse());
     let mut stop = None;
     // Draining stops the accept loops; the listeners then end once their connections have.
@@ -561,17 +562,20 @@ fn shutdown_delay(factory: &Factory) -> Result<Duration> {
 /// it is `delay` (`Config.shutdownDelayMs`) after the next item of `drain`, or on the item after
 /// it, whichever comes first. Load balancers go on sending connections for a while, which are
 /// served as before meanwhile, and a cluster node keeps its Durable Objects and its place in the
-/// cluster.
+/// cluster. Its readiness probe fails from the signal on (`ready` is dropped), so that what routes
+/// by it sends no more.
 async fn drain_due(
     factory: &Factory,
     delay: Duration,
     pending: bool,
+    ready: Option<Ready>,
     mut drain: Pin<&mut impl Stream<Item = ()>>,
 ) {
     if pending {
         return;
     }
     drain.next().await;
+    drop(ready);
     if delay.is_zero() {
         return;
     }
