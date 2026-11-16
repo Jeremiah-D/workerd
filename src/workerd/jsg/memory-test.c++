@@ -73,6 +73,8 @@ struct SyncIterable: public Object {
     JSG_MEMORY_INFO(SyncIteratorState) {
       tracker.trackField("name", name);
     }
+
+    JSG_HOLDS_NO_GC_HANDLES;
   };
 
   static kj::Maybe<int> nextFunc(Lock& js, SyncIteratorState& state) {
