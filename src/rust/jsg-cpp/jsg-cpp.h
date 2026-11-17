@@ -30,6 +30,8 @@
 
 #include <kj/memory.h>
 
+#include <type_traits>
+
 namespace workerd::rust::jsg_cpp {
 
 using Isolate = v8::Isolate;
@@ -203,8 +205,16 @@ MaybeLocal cppRefWrap(Isolate* isolate, const CppRef& ref) {
 // preserves the wrapper's identity, and is traced like any `jsg::V8Ref`: a cycle through it, for
 // example back from the Rust resource through a `jsg_cpp::Ref`, is collected. C++ calls the
 // resource's methods through `extern "Rust"` functions given `toFfi()`.
+template <typename Tag, typename = void>
+struct RustRefRtti {};
+
 template <typename Tag>
-class RustRef {
+struct RustRefRtti<Tag, std::void_t<typename Tag::JsgRttiDelegate>> {
+  using JsgRttiDelegate = typename Tag::JsgRttiDelegate;
+};
+
+template <typename Tag>
+class RustRef: public RustRefRtti<Tag> {
  public:
   // `value` if it is the wrapper of a `Tag` resource, kj::none for any other value. Throws
   // JsExceptionThrown if the check left an exception pending.

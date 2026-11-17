@@ -940,6 +940,7 @@ kj_test(
         ":streams",
         ":urlpattern",
         ":urlpattern-standard",
+        "//src/rust/jsg-cpp:ffi",
         "//src/workerd/io",
         "//src/workerd/jsg:rtti",
     ],
