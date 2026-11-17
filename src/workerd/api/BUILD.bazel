@@ -79,6 +79,7 @@ filegroup(
         "bench.h",
         "blob.h",
         "bootstrap-utils.h",
+        "cache-context-ref.h",
         "cache.h",
         "container.h",
         "event-target-bootstrap.h",

@@ -92,6 +92,14 @@ KJ_TEST("RustRef delegates its RTTI to the tag's JavaScript type") {
   KJ_EXPECT(builder.structure("workerd::api::ReadableStream"_kj) != kj::none);
 }
 
+KJ_TEST("ctx.cache retains its CacheContext RTTI with either backend") {
+  jsg::rtti::Builder builder((CompatibilityFlags::Reader()));
+  auto type = builder.type<CacheContextRef>();
+  KJ_ASSERT(type.isStructure());
+  KJ_EXPECT(type.getStructure().getFullyQualifiedName() == "workerd::api::CacheContext"_kj);
+  KJ_EXPECT(builder.structure("workerd::api::CacheContext"_kj) != kj::none);
+}
+
 KJ_TEST("RTTI export discovers Rust modules and their referenced structs without evaluating JS") {
   auto module = jsg::alloc<RTTIModule>();
   auto bytes = module->exportTypes(kj::str("2026-01-01"), kj::heapArray<kj::String>(0));
