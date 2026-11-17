@@ -530,6 +530,11 @@ pub mod ffi {
             object: &Local,
             key: &str,
         ) -> Result<MaybeLocal>;
+        pub unsafe fn local_object_set_prototype(
+            isolate: *mut Isolate,
+            object: &Local,
+            prototype: Local,
+        ) -> KjMaybe<bool>;
         // Like the three above, but infallible: they neither intern nor check.
         pub unsafe fn local_object_get_property_by_name(
             isolate: *mut Isolate,
@@ -4038,6 +4043,34 @@ impl Object {
 }
 
 impl<'s> Local<'s, Object> {
+    /// Changes this object's prototype, as `Object.setPrototypeOf()` does.
+    ///
+    /// # Errors
+    /// A pending JavaScript exception is propagated; a non-extensible object that refuses the
+    /// change produces a `TypeError`.
+    pub fn set_prototype(
+        self,
+        lock: &mut Lock<'s>,
+        prototype: Local<'s, Value>,
+    ) -> crate::Result<()> {
+        self.debug_assert_isolate(lock);
+        prototype.debug_assert_isolate(lock);
+        call_into_js(lock, |lock| {
+            // SAFETY: the isolate is locked, a context is entered and both handles are in scope.
+            match Option::from(unsafe {
+                ffi::local_object_set_prototype(
+                    lock.isolate().as_ffi(),
+                    self.raw(),
+                    prototype.into_ffi(),
+                )
+            }) {
+                Some(true) => Ok(Some(())),
+                Some(false) => Err(Error::new_type_error("Cannot set prototype")),
+                None => Ok(None),
+            }
+        })
+    }
+
     /// Sets `key` to `value`, like JS `obj[key] = value`.
     ///
     /// # Errors

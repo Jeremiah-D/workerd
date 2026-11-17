@@ -334,6 +334,8 @@ MaybeLocal object_new_with_data_properties(
 // Sets `key` to `value` and returns true, or returns false if a setter or Proxy trap threw,
 // leaving the exception pending.
 bool local_object_set_property(Isolate* isolate, Local& object, ::rust::Str key, Local value);
+// `Object::SetPrototype`, with none when JavaScript threw and false when the object refused it.
+kj::Maybe<bool> local_object_set_prototype(Isolate* isolate, const Local& object, Local prototype);
 // Stores in `has` whether `key` is in the object, and returns true, or returns false if a Proxy
 // trap threw, leaving the exception pending.
 bool local_object_has_property(Isolate* isolate, const Local& object, ::rust::Str key, bool& has);

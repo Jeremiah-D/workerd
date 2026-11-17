@@ -601,6 +601,18 @@ bool local_object_set_property(Isolate* isolate, Local& object, ::rust::Str key,
   return v8_obj->Set(context, v8_key, local_from_ffi<v8::Value>(kj::mv(value))).IsJust();
 }
 
+kj::Maybe<bool> local_object_set_prototype(Isolate* isolate, const Local& object, Local prototype) {
+  if (exceptionPending(isolate)) return kj::none;
+  bool changed;
+  if (!local_as_ref_from_ffi<v8::Object>(object)
+           ->SetPrototype(
+               isolate->GetCurrentContext(), local_from_ffi<v8::Value>(kj::mv(prototype)))
+           .To(&changed)) {
+    return kj::none;
+  }
+  return changed;
+}
+
 bool local_object_has_property(Isolate* isolate, const Local& object, ::rust::Str key, bool& has) {
   if (exceptionPending(isolate)) return false;
   auto v8_obj = local_as_ref_from_ffi<v8::Object>(object);
