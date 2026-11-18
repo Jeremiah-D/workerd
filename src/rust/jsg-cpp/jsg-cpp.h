@@ -194,20 +194,8 @@ MaybeLocal cppRefWrap(Isolate* isolate, const CppRef& ref) {
   return ::workerd::rust::jsg::maybe_local_to_ffi(result);
 }
 
-// A reference from C++ to a Rust JSG resource, typed by `Tag`. `Tag` is a C++ struct that
-// stands for the Rust resource type:
-//
-//     struct MyResourceTag {
-//       // The JavaScript class name, for error messages.
-//       static constexpr const char* NAME = "MyResource";
-//       // An `extern "Rust"` function returning `jsg::resource::ffi_is::<MyResource>()`.
-//       static kj::Maybe<bool> isInstance(v8::Isolate* isolate, Local value);
-//     };
-//
-// It holds the resource's JavaScript wrapper, which owns the resource, so it keeps both alive,
-// preserves the wrapper's identity, and is traced like any `jsg::V8Ref`: a cycle through it, for
-// example back from the Rust resource through a `jsg_cpp::Ref`, is collected. C++ calls the
-// resource's methods through `extern "Rust"` functions given `toFfi()`.
+// The base of RustRef<Tag>: forwards `Tag::JsgRttiDelegate` when the tag declares one, and is
+// empty otherwise.
 template <typename Tag, typename = void>
 struct RustRefRtti {};
 
@@ -216,6 +204,23 @@ struct RustRefRtti<Tag, std::void_t<typename Tag::JsgRttiDelegate>> {
   using JsgRttiDelegate = typename Tag::JsgRttiDelegate;
 };
 
+// A reference from C++ to a Rust JSG resource, typed by `Tag`. `Tag` is a C++ struct that
+// stands for the Rust resource type:
+//
+//     struct MyResourceTag {
+//       // The JavaScript class name, for error messages.
+//       static constexpr const char* NAME = "MyResource";
+//       // An `extern "Rust"` function returning `jsg::resource::ffi_is::<MyResource>()`.
+//       static kj::Maybe<bool> isInstance(v8::Isolate* isolate, Local value);
+//       // Optional: describes `RustRef<MyResourceTag>` to RTTI, and so to TypeScript
+//       // generation, as an existing C++ API type.
+//       using JsgRttiDelegate = jsg::Ref<SomeApiType>;
+//     };
+//
+// It holds the resource's JavaScript wrapper, which owns the resource, so it keeps both alive,
+// preserves the wrapper's identity, and is traced like any `jsg::V8Ref`: a cycle through it, for
+// example back from the Rust resource through a `jsg_cpp::Ref`, is collected. C++ calls the
+// resource's methods through `extern "Rust"` functions given `toFfi()`.
 template <typename Tag>
 class RustRef: public RustRefRtti<Tag> {
  public:
