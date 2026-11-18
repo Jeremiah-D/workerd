@@ -213,8 +213,8 @@ wd_cc_library(
         "workerd-api.h",
     ],
     implementation_deps = [
-        "//src/rust/jsg-cpp:ffi",
         "//src/rust/jsg:ffi",
+        "//src/rust/jsg-cpp:ffi",
         "//src/workerd/api:analytics-engine",
         "//src/workerd/api:capnp",
         "//src/workerd/api:kv",
