@@ -45,7 +45,7 @@ namespace workerd::rust::jsg {
 // not always check them against the buffer, so a view that does not lie within its buffer is
 // empty here, as it is for jsg::JsBufferSource.
 static kj::ArrayPtr<uint8_t> viewBytes(v8::Local<v8::ArrayBufferView> view) {
-  auto buffer = view->Buffer();
+  auto buffer = view->GetBuffer();
   auto byteOffset = view->ByteOffset();
   auto byteLength = view->ByteLength();
   auto bufferLength = buffer->ByteLength();
@@ -337,8 +337,11 @@ bool local_value_integer_value(Isolate* isolate, Local value, int64_t& result) {
 
 MaybeLocal local_value_to_string(Isolate* isolate, Local value) {
   if (exceptionPending(isolate)) return maybe_local_to_ffi(v8::MaybeLocal<v8::Value>());
-  return maybe_local_to_ffi(
-      local_from_ffi<v8::Value>(kj::mv(value))->ToString(isolate->GetCurrentContext()));
+  auto v8Value = local_from_ffi<v8::Value>(kj::mv(value));
+  if (v8Value->IsString()) {
+    return maybe_local_to_ffi(v8::MaybeLocal<v8::String>(v8Value.As<v8::String>()));
+  }
+  return maybe_local_to_ffi(v8Value->ToString(isolate->GetCurrentContext()));
 }
 
 MaybeLocal local_to_detail_string(Isolate* isolate, const Local& val) {
@@ -573,6 +576,30 @@ MaybeLocal function_new(Isolate* isolate, size_t callback, const Local& data) {
 }
 
 // Local<Object>
+Global dictionary_template_new(Isolate* isolate, ::rust::Slice<const ::rust::Str> keys) {
+  kj::Vector<std::string_view> names(keys.size());
+  for (auto key: keys) {
+    names.add(std::string_view(key.data(), key.size()));
+  }
+  auto tmpl = v8::DictionaryTemplate::New(
+      isolate, std::span<const std::string_view>(names.begin(), names.size()));
+  return to_ffi(v8::Global<v8::DictionaryTemplate>(isolate, tmpl));
+}
+
+MaybeLocal dictionary_template_new_instance(
+    Isolate* isolate, const Global& tmpl, ::rust::Slice<MaybeLocal> values) {
+  // V8 doesn't allow creating the object while an exception or a termination is pending (a debug
+  // check fails).
+  if (exceptionPending(isolate)) return maybe_local_to_ffi(v8::MaybeLocal<v8::Object>());
+  // The values are an array in the caller's stack frame, which has the layout of
+  // `v8::MaybeLocal` (asserted in ffi-inl.h), so they are passed on without being copied.
+  auto v8Values =
+      std::span(reinterpret_cast<v8::MaybeLocal<v8::Value>*>(values.data()), values.size());
+  auto object = global_as_ref_from_ffi<v8::DictionaryTemplate>(tmpl).Get(isolate)->NewInstance(
+      isolate->GetCurrentContext(), v8Values);
+  return maybe_local_to_ffi(v8::MaybeLocal<v8::Object>(object));
+}
+
 MaybeLocal object_new_with_data_properties(
     Isolate* isolate, ::rust::Slice<const ::rust::Str> keys, ::rust::Slice<const Local> values) {
   KJ_REQUIRE(keys.size() == values.size());
@@ -599,6 +626,17 @@ bool local_object_set_property(Isolate* isolate, Local& object, ::rust::Str key,
   auto context = isolate->GetCurrentContext();
   auto v8_key = makeInternedStr(isolate, key);
   return v8_obj->Set(context, v8_key, local_from_ffi<v8::Value>(kj::mv(value))).IsJust();
+}
+
+bool local_object_set_property_by_global_name(
+    Isolate* isolate, const Local& object, const Global& name, Local value) {
+  if (exceptionPending(isolate)) return false;
+  auto v8_obj = local_as_ref_from_ffi<v8::Object>(object);
+  auto context = isolate->GetCurrentContext();
+  return v8_obj
+      ->Set(context, global_as_ref_from_ffi<v8::Name>(name).Get(isolate),
+          local_from_ffi<v8::Value>(kj::mv(value)))
+      .IsJust();
 }
 
 kj::Maybe<bool> local_object_set_prototype(Isolate* isolate, const Local& object, Local prototype) {
@@ -635,6 +673,15 @@ MaybeLocal local_object_get_property_by_name(
   auto v8_obj = local_as_ref_from_ffi<v8::Object>(object);
   auto context = isolate->GetCurrentContext();
   return maybe_local_to_ffi(v8_obj->Get(context, local_as_ref_from_ffi<v8::Name>(name)));
+}
+
+MaybeLocal local_object_get_property_by_global_name(
+    Isolate* isolate, const Local& object, const Global& name) {
+  if (exceptionPending(isolate)) return maybe_local_to_ffi(v8::MaybeLocal<v8::Value>());
+  auto v8_obj = local_as_ref_from_ffi<v8::Object>(object);
+  auto context = isolate->GetCurrentContext();
+  return maybe_local_to_ffi(
+      v8_obj->Get(context, global_as_ref_from_ffi<v8::Name>(name).Get(isolate)));
 }
 
 bool local_object_get_own_property_names(
@@ -718,10 +765,6 @@ bool local_promise_resolver_reject(Isolate* isolate, const Local& resolver, cons
 }
 
 // Local<Array>
-Local local_new_array(Isolate* isolate, size_t length) {
-  return to_ffi(v8::Array::New(isolate, length));
-}
-
 uint32_t local_array_length(const Local& array) {
   return local_as_ref_from_ffi<v8::Array>(array)->Length();
 }
@@ -782,6 +825,12 @@ uint8_t* local_array_buffer_data(const Local& buffer) {
   return static_cast<uint8_t*>(local_as_ref_from_ffi<v8::ArrayBuffer>(buffer)->Data());
 }
 
+uintptr_t local_array_buffer_contents(const Local& buffer, size_t& byteLength) {
+  auto buf = local_as_ref_from_ffi<v8::ArrayBuffer>(buffer);
+  byteLength = buf->ByteLength();
+  return byteLength == 0 ? 0 : reinterpret_cast<uintptr_t>(buf->Data());
+}
+
 size_t local_array_buffer_get_backing_store(const Local& buffer) {
   return reinterpret_cast<size_t>(new std::shared_ptr<v8::BackingStore>(
       local_as_ref_from_ffi<v8::ArrayBuffer>(buffer)->GetBackingStore()));
@@ -797,7 +846,8 @@ size_t local_array_buffer_view_byte_length(const Local& view) {
 }
 
 uint8_t* local_array_buffer_view_buffer_data(const Local& view) {
-  return static_cast<uint8_t*>(local_as_ref_from_ffi<v8::ArrayBufferView>(view)->Buffer()->Data());
+  return static_cast<uint8_t*>(
+      local_as_ref_from_ffi<v8::ArrayBufferView>(view)->GetBuffer()->Data());
 }
 
 uintptr_t local_array_buffer_view_data(const Local& view, size_t& byte_length) {
@@ -1015,7 +1065,7 @@ bool unwrap_number(Isolate* isolate, Local value, double& result) {
 }
 
 namespace {
-// For an object already known to be a Rust resource wrapper, from the marker or a signature.
+// For an object already known to be a Rust resource wrapper, from the marker.
 // Anything else is an invariant violation and aborts.
 Wrappable& unwrapRustWrapper(Isolate* isolate, v8::Local<v8::Object> object) {
   return *static_cast<Wrappable*>(::workerd::jsg::Wrappable::unwrapFromShimInRangeOrAbort(
@@ -1055,9 +1105,19 @@ const TraitObjectPtr* unwrap_resource_trait_object(Isolate* isolate, Local value
 }
 
 const TraitObjectPtr* unwrap_method_receiver(Isolate* isolate, Local value) {
-  // V8 has checked the receiver against the method's Signature, so it is a wrapper made from a
-  // Rust resource template, and needs no marker check.
-  return &unwrapRustWrapper(isolate, local_from_ffi<v8::Object>(kj::mv(value))).trait_object;
+  // The receiver of a method registered with the type's Signature is a wrapper made from a Rust
+  // resource template, so this skips the marker check. A method callback registered without one
+  // gets any value, which is not found rather than aborting.
+  auto v8Value = local_from_ffi<v8::Value>(kj::mv(value));
+  if (!v8Value->IsObject()) return nullptr;
+  auto object = v8Value.As<v8::Object>();
+  // Object::Unwrap reads the CppHeap pointer slot of an API wrapper without checking that the
+  // object is one (V8 only DCHECKs it), and other objects keep other fields at that offset.
+  if (!object->IsApiWrapper()) return nullptr;
+  auto* wrappable = ::workerd::jsg::Wrappable::unwrapFromShim(
+      isolate, object, ::workerd::jsg::kRustResourceWrappableTagRange);
+  if (wrappable == nullptr) return nullptr;
+  return &static_cast<Wrappable*>(wrappable)->trait_object;
 }
 
 // Uses V8's Array::Iterate(), which is faster than indexed access. Iterate() opens HandleScopes of
@@ -1132,7 +1192,7 @@ size_t local_typed_array_length(const Local& array) {
 
 uintptr_t local_typed_array_buffer_data(const Local& array) {
   return reinterpret_cast<uintptr_t>(
-      local_as_ref_from_ffi<v8::TypedArray>(array)->Buffer()->Data());
+      local_as_ref_from_ffi<v8::TypedArray>(array)->GetBuffer()->Data());
 }
 
 size_t local_typed_array_byte_offset(const Local& array) {
@@ -1199,6 +1259,16 @@ kj::Rc<Wrappable> wrappable_to_rc(Wrappable& wrappable) {
 
 void wrappable_add_strong_ref(Wrappable& wrappable) {
   wrappable.addStrongRef();
+}
+
+bool wrappable_is_condemned(const Wrappable& wrappable) {
+  return wrappable.isCondemned();
+}
+
+bool wrappable_try_condemn(Wrappable& wrappable) {
+  if (!wrappable.isCondemned()) return false;
+  wrappable.condemn();
+  return true;
 }
 
 void wrappable_remove_strong_ref(Wrappable& wrappable) {
@@ -1337,6 +1407,14 @@ void fci_set_return_value(FunctionCallbackInfo* args, Local value) {
   args->GetReturnValue().Set(local_from_ffi<v8::Value>(kj::mv(value)));
 }
 
+void fci_set_return_number(FunctionCallbackInfo* args, double value) {
+  args->GetReturnValue().Set(value);
+}
+
+void fci_set_return_boolean(FunctionCallbackInfo* args, bool value) {
+  args->GetReturnValue().Set(value);
+}
+
 kj::Maybe<kj::Rc<Wrappable>> fci_get_data_wrappable(FunctionCallbackInfo* args) {
   auto data = args->DataV2().As<v8::Value>();
   KJ_IF_SOME(wrappable, ::workerd::jsg::Wrappable::tryUnwrapOpaque(args->GetIsolate(), data)) {
@@ -1356,6 +1434,14 @@ Local pci_get_this(PropertyCallbackInfo* info) {
 
 void pci_set_return_value(PropertyCallbackInfo* info, Local value) {
   info->GetReturnValue().Set(local_from_ffi<v8::Value>(kj::mv(value)));
+}
+
+void pci_set_return_number(PropertyCallbackInfo* info, double value) {
+  info->GetReturnValue().Set(value);
+}
+
+void pci_set_return_boolean(PropertyCallbackInfo* info, bool value) {
+  info->GetReturnValue().Set(value);
 }
 
 Isolate* psci_get_isolate(PropertySetterCallbackInfo* info) {
@@ -1506,6 +1592,25 @@ v8::Intrinsic v8Intrinsic(Intrinsic intrinsic) {
   }
   KJ_UNREACHABLE;
 }
+
+// Builds that enable cfi-icall, V8 included, check the indirect call V8 makes to a function
+// callback through its C++ thunk, which it uses while the CPU profiler or side-effect checks are
+// active. The check traps unless the callee is a C++ function of type v8::FunctionCallback. Rust
+// is compiled without CFI (see kj-rs's future.h), so a resource template never hands V8 a Rust
+// callback directly: it gets this trampoline instead, with the Rust callback as its data (see
+// rustCallbackData()).
+__attribute__((no_sanitize("cfi-icall"))) void callRustFunctionCallback(
+    const v8::FunctionCallbackInfo<v8::Value>& info) {
+  auto callback = reinterpret_cast<v8::FunctionCallback>(
+      info.DataV2().As<v8::Value>().As<v8::External>()->Value(v8::kExternalPointerTypeTagDefault));
+  callback(info);
+}
+
+// The data of a function template whose callback is callRustFunctionCallback().
+v8::Local<v8::External> rustCallbackData(v8::Isolate* isolate, size_t callback) {
+  return v8::External::New(
+      isolate, reinterpret_cast<void*>(callback), v8::kExternalPointerTypeTagDefault);
+}
 }  // namespace
 
 Global create_resource_template(Isolate* isolate, const ResourceDescriptor& descriptor) {
@@ -1518,6 +1623,7 @@ Global create_resource_template(Isolate* isolate, const ResourceDescriptor& desc
   auto registerExternalRef = [&](size_t callback) {
     workerd::jsg::isolateRegisterExternalReference(isolate, static_cast<intptr_t>(callback));
   };
+  registerExternalRef(reinterpret_cast<size_t>(&callRustFunctionCallback));
 
   const bool specCompliant = workerd::jsg::getSpecCompliantPropertyAttributes(isolate);
 
@@ -1527,9 +1633,9 @@ Global create_resource_template(Isolate* isolate, const ResourceDescriptor& desc
 
   v8::Local<v8::FunctionTemplate> constructor;
   KJ_IF_SOME(descriptor, descriptor.constructor) {
-    constructor = v8::FunctionTemplate::New(isolate,
-        reinterpret_cast<v8::FunctionCallback>(reinterpret_cast<void*>(descriptor.callback)),
-        v8::Local<v8::Value>(), v8::Local<v8::Signature>(), specLength(descriptor.length));
+    constructor = v8::FunctionTemplate::New(isolate, &callRustFunctionCallback,
+        rustCallbackData(isolate, descriptor.callback), v8::Local<v8::Signature>(),
+        specLength(descriptor.length));
     registerExternalRef(descriptor.callback);
   } else {
     constructor = v8::FunctionTemplate::New(isolate, &throwIllegalConstructor);
@@ -1570,18 +1676,17 @@ Global create_resource_template(Isolate* isolate, const ResourceDescriptor& desc
 
   auto makeMethod = [&](const MethodDescriptor& method, v8::Local<v8::Signature> methodSignature) {
     registerExternalRef(method.callback);
-    auto callback =
-        reinterpret_cast<v8::FunctionCallback>(reinterpret_cast<void*>(method.callback));
+    auto data = rustCallbackData(isolate, method.callback);
     if (fastApiEnabled) {
       KJ_IF_SOME(fast, method.fast) {
         const auto& cFunction = getFastCFunction(fast);
         registerExternalRef(reinterpret_cast<size_t>(&cFunction));
-        return v8::FunctionTemplate::NewWithCFunctionOverloads(isolate, callback,
-            v8::Local<v8::Value>(), methodSignature, specLength(method.length),
-            v8::ConstructorBehavior::kThrow, v8::SideEffectType::kHasSideEffect, {&cFunction, 1});
+        return v8::FunctionTemplate::NewWithCFunctionOverloads(isolate, &callRustFunctionCallback,
+            data, methodSignature, specLength(method.length), v8::ConstructorBehavior::kThrow,
+            v8::SideEffectType::kHasSideEffect, {&cFunction, 1});
       }
     }
-    return v8::FunctionTemplate::New(isolate, callback, v8::Local<v8::Value>(), methodSignature,
+    return v8::FunctionTemplate::New(isolate, &callRustFunctionCallback, data, methodSignature,
         specLength(method.length), v8::ConstructorBehavior::kThrow);
   };
 
@@ -1601,9 +1706,8 @@ Global create_resource_template(Isolate* isolate, const ResourceDescriptor& desc
   auto setDisposer = [&](v8::Local<v8::Symbol> symbol, size_t callback) {
     registerExternalRef(callback);
     prototype->Set(symbol,
-        v8::FunctionTemplate::New(isolate,
-            reinterpret_cast<v8::FunctionCallback>(reinterpret_cast<void*>(callback)),
-            v8::Local<v8::Value>(), signature, 0, v8::ConstructorBehavior::kThrow),
+        v8::FunctionTemplate::New(isolate, &callRustFunctionCallback,
+            rustCallbackData(isolate, callback), signature, 0, v8::ConstructorBehavior::kThrow),
         v8::PropertyAttribute::DontEnum);
   };
   KJ_IF_SOME(callback, descriptor.dispose) {
@@ -1643,15 +1747,14 @@ Global create_resource_template(Isolate* isolate, const ResourceDescriptor& desc
         int len = isGetter ? 0 : 1;
         // Per Web IDL, spec-compliant getters/setters use empty signature (matching C++
         // registerPrototypeProperty/registerReadonlyPrototypeProperty in resource.h:1438-1441).
-        fn = v8::FunctionTemplate::New(isolate,
-            reinterpret_cast<v8::FunctionCallback>(reinterpret_cast<void*>(callback)),
-            v8::Local<v8::Value>(), v8::Local<v8::Signature>(), len,
+        fn = v8::FunctionTemplate::New(isolate, &callRustFunctionCallback,
+            rustCallbackData(isolate, callback), v8::Local<v8::Signature>(), len,
             v8::ConstructorBehavior::kThrow);
         auto prefix = isGetter ? "get " : "set ";
         fn->SetClassName(::workerd::jsg::v8Str(isolate, kj::str(prefix, prop.name)));
       } else {
         fn = v8::FunctionTemplate::New(
-            isolate, reinterpret_cast<v8::FunctionCallback>(reinterpret_cast<void*>(callback)));
+            isolate, &callRustFunctionCallback, rustCallbackData(isolate, callback));
       }
       return fn;
     };
@@ -1716,8 +1819,9 @@ Global create_resource_template(Isolate* isolate, const ResourceDescriptor& desc
         // spec_compliant_property_attributes has no effect on inspect properties.
         auto symbol = v8::Symbol::New(isolate, v8Name);
         inspectProperties->Set(v8Name, symbol, v8::PropertyAttribute::ReadOnly);
-        auto getterFn = v8::FunctionTemplate::New(isolate,
-            reinterpret_cast<v8::FunctionCallback>(reinterpret_cast<void*>(prop.getter_callback)));
+        registerExternalRef(prop.getter_callback);
+        auto getterFn = v8::FunctionTemplate::New(
+            isolate, &callRustFunctionCallback, rustCallbackData(isolate, prop.getter_callback));
         prototype->SetAccessorProperty(symbol, getterFn, v8::Local<v8::FunctionTemplate>(),
             static_cast<v8::PropertyAttribute>(
                 v8::PropertyAttribute::ReadOnly | v8::PropertyAttribute::DontEnum));
@@ -1747,7 +1851,7 @@ Global create_resource_template(Isolate* isolate, const ResourceDescriptor& desc
   // prototype, and V8 runs it with the instance as `this`.
   KJ_IF_SOME(callable, descriptor.callable) {
     instance->SetCallAsFunctionHandler(
-        reinterpret_cast<v8::FunctionCallback>(reinterpret_cast<void*>(callable)));
+        &callRustFunctionCallback, rustCallbackData(isolate, callable));
     registerExternalRef(callable);
   }
 

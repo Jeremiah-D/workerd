@@ -20,6 +20,7 @@
 #endif  // defined(WORKERD_USE_TRANSPILER)
 #include <workerd/server/actor-id-impl.h>
 #include <workerd/server/cron/cron_js.embed.h>
+#include <workerd/server/d1/d1_js.embed.h>
 #include <workerd/server/fallback-service.h>
 #include <workerd/server/kv/kv_js.embed.h>
 #include <workerd/server/queues/queues_js.embed.h>
@@ -46,7 +47,6 @@ using api::pyodide::PythonConfig;
 
 namespace {
 static const PythonConfig defaultConfig{
-  .packageDiskCacheRoot = kj::none,
   .createSnapshot = false,
   .createBaselineSnapshot = false,
 };
@@ -59,6 +59,7 @@ kj::Maybe<kj::StringPtr> findBundled(kj::StringPtr name) {
     map.insert("/workerd/cron.js"_kj, CRON_JS);
     map.insert("/workerd/queues.js"_kj, QUEUES_JS);
     map.insert("/workerd/workflows.js"_kj, WORKFLOWS_JS);
+    map.insert("/workerd/d1.js"_kj, D1_JS);
     return map;
   }();
   return bundled.find(name).map([](auto& source) { return source; });
@@ -887,8 +888,8 @@ kj::Arc<jsg::modules::ModuleRegistry> WorkerdApi::newWorkerdModuleRegistry(
     //   // Inject disk cache module
     //   pyodideBundleBuilder.addSynthetic(diskCacheSpecifier,
     //       jsg::modules::Module::newJsgObjectModuleHandler<DiskCache, JsgWorkerdIsolate_TypeWrapper>(
-    //           [&packageDiskCacheRoot = pythonConfig.packageDiskCacheRoot](jsg::Lock& js) mutable
-    //           -> jsg::Ref<DiskCache> { return js.alloc<DiskCache>(packageDiskCacheRoot); }));
+    //           [&snapshotDirectory = pythonConfig.snapshotDirectory](jsg::Lock& js) mutable
+    //           -> jsg::Ref<DiskCache> { return js.alloc<DiskCache>(snapshotDirectory); }));
     //   // Inject a (disabled) SimplePythonLimiter
     //   pyodideBundleBuilder.addSynthetic(limiterSpecifier,
     //       jsg::modules::Module::newJsgObjectModuleHandler<SimplePythonLimiter,

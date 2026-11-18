@@ -983,18 +983,9 @@ struct Worker::Script::Impl {
           v8::TryCatch tryCatch(js.v8Isolate);
           ExceptionOrDuration limitErrorOrTime = 0 * kj::NANOSECONDS;
           try {
-            kj::Maybe<jsg::Value> result;
-            {
-              auto limitScope = worker->getIsolate().getLimitEnforcer().enterDynamicImportJs(
-                  lock, limitErrorOrTime);
-              result = handler();
-            }
-            // The limit may have been hit in a microtask, which throws nothing.
-            KJ_IF_SOME(limitError, limitErrorOrTime.tryGet<kj::Exception>()) {
-              kj::throwException(kj::mv(limitError));
-            } else {
-            }  // Squash the compile warning/error
-            return DynamicImportResult(KJ_ASSERT_NONNULL(kj::mv(result)));
+            auto limitScope = worker->getIsolate().getLimitEnforcer().enterDynamicImportJs(
+                lock, limitErrorOrTime);
+            return DynamicImportResult(handler());
           } catch (jsg::JsExceptionThrown&) {
             // Handled below...
           } catch (kj::Exception& ex) {
@@ -2311,21 +2302,20 @@ kj::Maybe<jsg::JsObject> tryResolveMainModule(jsg::Lock& js,
     jsg::JsContext<api::ServiceWorkerGlobalScope>& jsContext,
     const Worker::Script& script,
     ExceptionOrDuration& limitErrorOrTime) {
-  // Declared before limitScope so that it runs after limitScope has recorded the limit error.
-  KJ_ON_SCOPE_SUCCESS({
-    if (limitErrorOrTime.is<kj::Exception>()) {
-      // If we hit the limit in PerformMicrotaskCheckpoint() we may not have actually
-      // thrown an exception.
-      throw jsg::JsExceptionThrown();
-    }
-  });
-
   kj::Own<void> limitScope;
   if (script.isPython()) {
     limitScope = script.getIsolate().getLimitEnforcer().enterStartupPython(js, limitErrorOrTime);
   } else {
     limitScope = script.getIsolate().getLimitEnforcer().enterStartupJs(js, limitErrorOrTime);
   }
+
+  KJ_DEFER({
+    if (limitErrorOrTime.is<kj::Exception>()) {
+      // If we hit the limit in PerformMicrotaskCheckpoint() we may not have actually
+      // thrown an exception.
+      throw jsg::JsExceptionThrown();
+    }
+  });
 
   // Before resolving the main module, if both nodejs_compat_v2 and the new
   // module registry are enabled, let's pre-resolve the process and buffer modules.
@@ -2533,23 +2523,16 @@ Worker::Worker(kj::Own<const Script> scriptParam,
 
             KJ_SWITCH_ONEOF(script->impl->unboundScriptOrMainModule) {
               KJ_CASE_ONEOF(unboundScript, jsg::NonModuleScript) {
-                {
-                  auto limitScope =
-                      script->isolate->getLimitEnforcer().enterStartupJs(lock, limitErrorOrTime);
-                  unboundScript.run(lock);
-                  // Flush microtasks enqueued during top-level script evaluation.
-                  // Without this flush, microtasks (e.g. promise continuations from async
-                  // initialization) remain on the per-isolate microtask queue and can leak
-                  // across V8 contexts when multiple Workers share an isolate (same script,
-                  // different zones). The leaked microtasks then execute under the wrong
-                  // IoContext, making things go boom.
-                  lock.runMicrotasks();
-                }
-                if (limitErrorOrTime.is<kj::Exception>()) {
-                  // If we hit the limit in runMicrotasks() we may not have actually thrown an
-                  // exception.
-                  throw jsg::JsExceptionThrown();
-                }
+                auto limitScope =
+                    script->isolate->getLimitEnforcer().enterStartupJs(lock, limitErrorOrTime);
+                unboundScript.run(lock);
+                // Flush microtasks enqueued during top-level script evaluation.
+                // Without this flush, microtasks (e.g. promise continuations from async
+                // initialization) remain on the per-isolate microtask queue and can leak across
+                // V8 contexts when multiple Workers share an isolate (same script, different
+                // zones). The leaked microtasks then execute under the wrong IoContext, making
+                // things go boom.
+                lock.runMicrotasks();
               }
               KJ_CASE_ONEOF(mainModule, kj::Path) {
                 if (lock.isPreparingSnapshot() && script->isModular()) {
@@ -2756,8 +2739,9 @@ Worker::Worker(kj::Own<const Script> scriptParam,
       // inside the Rust Realm, invisible to the C++ template slots and reset passes — each
       // one would trip CreateBlob's CheckGlobalAndEternalHandles. Drain them here (ownership
       // of each persistent handle transfers to this vector) and hand them to
-      // createSnapshotBlob() to reset like any other isolate handle. Templates are recreated
-      // lazily on demand and a START_FROM_SNAPSHOT isolate starts with an empty cache.
+      // createSnapshotBlob() to reset like any other isolate handle. The handles the Realm caches
+      // for struct types are reset by the same call. Templates are recreated lazily on demand and
+      // a START_FROM_SNAPSHOT isolate starts with an empty cache.
       kj::Vector<v8::Global<v8::FunctionTemplate>> rustTemplateHandles;
       {
         auto* realm = ::workerd::rust::jsg::realm_from_isolate(lock.v8Isolate);
@@ -4327,7 +4311,7 @@ struct Worker::Actor::Impl {
   // websocket. We eventually move the HibernationManager into the DeferredProxy task
   // (since it's long lived), but can still refer to the HibernationManager by passing a reference
   // in each CustomEvent.
-  kj::Maybe<kj::Own<HibernationManager>> hibernationManager;
+  kj::Maybe<kj::Rc<HibernationManager>> hibernationManager;
   kj::Maybe<uint16_t> hibernationEventType;
 
   struct ScheduledAlarm {
@@ -4374,7 +4358,7 @@ struct Worker::Actor::Impl {
       kj::Own<Loopback> loopback,
       TimerChannel& timerChannel,
       kj::Own<ActorObserver> metricsParam,
-      kj::Maybe<kj::Own<HibernationManager>> manager,
+      kj::Maybe<kj::Rc<HibernationManager>> manager,
       kj::Maybe<uint16_t>& hibernationEventType,
       kj::Maybe<rpc::Container::Client> container,
       jsg::Dict<kj::String> containerImages,
@@ -4431,7 +4415,7 @@ Worker::Actor::Actor(const Worker& worker,
     kj::Own<Loopback> loopback,
     TimerChannel& timerChannel,
     kj::Own<ActorObserver> metrics,
-    kj::Maybe<kj::Own<HibernationManager>> manager,
+    kj::Maybe<kj::Rc<HibernationManager>> manager,
     kj::Maybe<uint16_t> hibernationEventType,
     kj::Maybe<rpc::Container::Client> container,
     jsg::Dict<kj::String> containerImages,
@@ -5014,9 +4998,8 @@ jsg::JsValue Worker::Actor::getEnv(jsg::Lock& js) {
   return jsg::JsValue(KJ_REQUIRE_NONNULL(worker->impl->env).getHandle(js));
 }
 
-kj::Maybe<Worker::Actor::HibernationManager&> Worker::Actor::getHibernationManager() {
-  return impl->hibernationManager.map(
-      [](kj::Own<HibernationManager>& hib) -> HibernationManager& { return *hib; });
+kj::Maybe<kj::Rc<Worker::Actor::HibernationManager>> Worker::Actor::getHibernationManager() {
+  return impl->hibernationManager.map([](kj::Rc<HibernationManager>& hib) { return hib.addRef(); });
 }
 
 kj::Maybe<uint64_t> Worker::Actor::getHolderToken() {
@@ -5061,7 +5044,7 @@ void Worker::Actor::attachHibernationManager(HibernationManager& manager) {
   manager.setLoopback(impl->loopback->addRef());
 }
 
-void Worker::Actor::setHibernationManager(kj::Own<HibernationManager> hib) {
+void Worker::Actor::setHibernationManager(kj::Rc<HibernationManager> hib) {
   KJ_REQUIRE(impl->hibernationManager == kj::none);
 
   // A manager built by acceptWebSocket() already points here, but an adopted one still carries the
