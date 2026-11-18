@@ -4238,11 +4238,7 @@ impl<'s> Local<'s, Object> {
     /// A `TypeError` if the object refuses the change: the new prototype chain would contain
     /// a cycle, the object is not extensible, or it is a Proxy whose `setPrototypeOf` trap
     /// refused or threw. A pending exception or termination is propagated.
-    pub fn set_prototype(
-        self,
-        lock: &mut Lock<'s>,
-        prototype: Option<Local<'s, Object>>,
-    ) -> crate::Result<()> {
+    pub fn set_prototype(self, lock: &mut Lock<'s>, prototype: Option<Self>) -> crate::Result<()> {
         self.debug_assert_isolate(lock);
         let prototype: Local<'s, Value> = match prototype {
             Some(prototype) => {

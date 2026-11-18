@@ -201,7 +201,7 @@ struct RustRefRtti {};
 
 template <typename Tag>
 struct RustRefRtti<Tag, std::void_t<typename Tag::JsgRttiDelegate>> {
-  using JsgRttiDelegate = typename Tag::JsgRttiDelegate;
+  using JsgRttiDelegate = Tag::JsgRttiDelegate;
 };
 
 // A reference from C++ to a Rust JSG resource, typed by `Tag`. `Tag` is a C++ struct that
