@@ -535,7 +535,7 @@ jsg::Optional<api::RustCacheContext> Worker::Api::getCtxCacheRustProperty(jsg::L
 }
 
 kj::Maybe<bool> Worker::Api::isCtxCacheRustInstance(
-    v8::Isolate* isolate, rust::jsg_cpp::Local value) const {
+    v8::Isolate* isolate, v8::Local<v8::Value> value) const {
   return false;
 }
 

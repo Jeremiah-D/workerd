@@ -103,7 +103,8 @@ jsg::Optional<CacheContextRef> ExecutionContext::getCache(jsg::Lock& js) {
 
 kj::Maybe<bool> CacheContextTag::isInstance(v8::Isolate* isolate, rust::jsg_cpp::Local value) {
   auto& js = jsg::Lock::from(isolate);
-  return Worker::Isolate::from(js).getApi().isCtxCacheRustInstance(isolate, value);
+  return Worker::Isolate::from(js).getApi().isCtxCacheRustInstance(
+      isolate, rust::jsg::local_from_ffi<v8::Value>(kj::mv(value)));
 }
 
 jsg::Promise<CachePurgeResult> CacheContext::purge(jsg::Lock& js,

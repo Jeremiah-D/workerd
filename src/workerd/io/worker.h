@@ -748,8 +748,10 @@ class Worker::Api {
   // A typed Rust JSG implementation of the same property. The legacy hook is used when this
   // returns none; both return none in standalone workerd.
   virtual jsg::Optional<api::RustCacheContext> getCtxCacheRustProperty(jsg::Lock& js) const;
+  // Whether `value` is the wrapper of the resource getCtxCacheRustProperty() returns, or none if
+  // the check left an exception pending.
   virtual kj::Maybe<bool> isCtxCacheRustInstance(
-      v8::Isolate* isolate, rust::jsg_cpp::Local value) const;
+      v8::Isolate* isolate, v8::Local<v8::Value> value) const;
 
   virtual const jsg::IsolateObserver& getObserver() const = 0;
   virtual void setIsolateObserver(IsolateObserver&) = 0;
