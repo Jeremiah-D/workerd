@@ -15,3 +15,4 @@
 
 pub mod handoff;
 pub mod lease;
+pub mod watchdog;
