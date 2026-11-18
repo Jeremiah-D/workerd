@@ -84,7 +84,7 @@ CacheContextRef::CacheContextRef(RustCacheContext cache): value(kj::mv(cache)) {
 CacheContextRef::CacheContextRef(CacheContextRef&&) = default;
 CacheContextRef::~CacheContextRef() noexcept(false) = default;
 
-jsg::Optional<CacheContextRef> ExecutionContext::getCache(jsg::Lock& js) {
+jsg::Optional<CacheContextRef> currentCacheContext(jsg::Lock& js) {
   if (IoContext::hasCurrent()) {
     auto& api = Worker::Isolate::from(js).getApi();
     KJ_IF_SOME(cache, api.getCtxCacheRustProperty(js)) {
@@ -95,6 +95,10 @@ jsg::Optional<CacheContextRef> ExecutionContext::getCache(jsg::Lock& js) {
     }
   }
   return kj::none;
+}
+
+jsg::Optional<CacheContextRef> ExecutionContext::getCache(jsg::Lock& js) {
+  return currentCacheContext(js);
 }
 
 kj::Maybe<bool> CacheContextTag::isInstance(v8::Isolate* isolate, rust::jsg_cpp::Local value) {

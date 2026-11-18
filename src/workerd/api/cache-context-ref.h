@@ -47,6 +47,8 @@ class CacheContextRef {
     KJ_UNREACHABLE;
   }
 
+  // Only to satisfy SelfConvertible: `ctx.cache` is a getter-only property, so nothing unwraps a
+  // CacheContextRef.
   static kj::Maybe<CacheContextRef> jsgTryUnwrap(auto& typeWrapper,
       jsg::Lock& js,
       v8::Local<v8::Context> context,
@@ -68,5 +70,10 @@ class CacheContextRef {
  private:
   kj::OneOf<jsg::Ref<CacheContext>, RustCacheContext> value;
 };
+
+// The `ctx.cache` of the current request: the embedder's Rust implementation if it supplies one
+// (Worker::Api::getCtxCacheRustProperty()), otherwise its C++ one (getCtxCacheProperty()), or
+// none outside a request or when the embedder supplies neither.
+jsg::Optional<CacheContextRef> currentCacheContext(jsg::Lock& js);
 
 }  // namespace workerd::api

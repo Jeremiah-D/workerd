@@ -59,16 +59,7 @@ void EntrypointsModule::waitUntil(kj::Promise<void> promise) {
 }
 
 jsg::Optional<CacheContextRef> EntrypointsModule::getCtxCache(jsg::Lock& js) {
-  if (IoContext::hasCurrent()) {
-    auto& api = Worker::Isolate::from(js).getApi();
-    KJ_IF_SOME(cache, api.getCtxCacheRustProperty(js)) {
-      return CacheContextRef(kj::mv(cache));
-    }
-    KJ_IF_SOME(cache, api.getCtxCacheProperty(js)) {
-      return CacheContextRef(kj::mv(cache));
-    }
-  }
-  return kj::none;
+  return currentCacheContext(js);
 }
 
 kj::String EntrypointsModule::mapVirtualHost(
