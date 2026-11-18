@@ -352,7 +352,9 @@ bool local_object_set_property(Isolate* isolate, Local& object, ::rust::Str key,
 // The same for a key held in a `v8::Global<v8::Name>`, such as a cached struct field name.
 bool local_object_set_property_by_global_name(
     Isolate* isolate, const Local& object, const Global& name, Local value);
-// `Object::SetPrototype`, with none when JavaScript threw and false when the object refused it.
+// `Object::SetPrototype`: true if the prototype changed, false if the object refused the change
+// (a cycle, a non-extensible object, or a Proxy whose trap refused or threw), or none if an
+// exception or a termination is pending. `prototype` is an object or null.
 kj::Maybe<bool> local_object_set_prototype(Isolate* isolate, const Local& object, Local prototype);
 // Stores in `has` whether `key` is in the object, and returns true, or returns false if a Proxy
 // trap threw, leaving the exception pending.

@@ -174,7 +174,7 @@ fn resource_prototype_can_link_to_a_parent_in_the_current_realm() {
         )
         .unwrap();
         let parent = lock.new_object();
-        prototype.set_prototype(lock, parent.into())?;
+        prototype.set_prototype(lock, Some(parent))?;
         ctx.set_global(lock, "Sample", constructor);
         ctx.set_global(lock, "ParentProto", parent);
         assert!(

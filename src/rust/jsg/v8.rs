@@ -603,11 +603,6 @@ pub mod ffi {
             object: &Local,
             key: &str,
         ) -> Result<MaybeLocal>;
-        pub unsafe fn local_object_set_prototype(
-            isolate: *mut Isolate,
-            object: &Local,
-            prototype: Local,
-        ) -> KjMaybe<bool>;
         // Like the three above, but infallible: they neither intern nor check.
         pub unsafe fn local_object_get_property_by_name(
             isolate: *mut Isolate,
@@ -625,6 +620,11 @@ pub mod ffi {
             object: &Local,
             names: &mut Vec<Local>,
         ) -> bool;
+        pub unsafe fn local_object_set_prototype(
+            isolate: *mut Isolate,
+            object: &Local,
+            prototype: Local,
+        ) -> KjMaybe<bool>;
 
         // Local<Promise>
         pub unsafe fn local_promise_state(promise: &Local) -> PromiseState;
@@ -4231,18 +4231,26 @@ impl Object {
 }
 
 impl<'s> Local<'s, Object> {
-    /// Changes this object's prototype, as `Object.setPrototypeOf()` does.
+    /// Changes this object's prototype to `prototype`, or to null for `None`, as
+    /// `Object.setPrototypeOf()` does.
     ///
     /// # Errors
-    /// A pending JavaScript exception is propagated; a non-extensible object that refuses the
-    /// change produces a `TypeError`.
+    /// A `TypeError` if the object refuses the change: the new prototype chain would contain
+    /// a cycle, the object is not extensible, or it is a Proxy whose `setPrototypeOf` trap
+    /// refused or threw. A pending exception or termination is propagated.
     pub fn set_prototype(
         self,
         lock: &mut Lock<'s>,
-        prototype: Local<'s, Value>,
+        prototype: Option<Local<'s, Object>>,
     ) -> crate::Result<()> {
         self.debug_assert_isolate(lock);
-        prototype.debug_assert_isolate(lock);
+        let prototype: Local<'s, Value> = match prototype {
+            Some(prototype) => {
+                prototype.debug_assert_isolate(lock);
+                prototype.into()
+            }
+            None => lock.null(),
+        };
         call_into_js(lock, |lock| {
             // SAFETY: the isolate is locked, a context is entered and both handles are in scope.
             match Option::from(unsafe {
@@ -4253,7 +4261,7 @@ impl<'s> Local<'s, Object> {
                 )
             }) {
                 Some(true) => Ok(Some(())),
-                Some(false) => Err(Error::new_type_error("Cannot set prototype")),
+                Some(false) => Err(Error::new_type_error("Cannot set the object's prototype")),
                 None => Ok(None),
             }
         })
