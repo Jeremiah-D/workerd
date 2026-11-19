@@ -110,6 +110,16 @@ class Body: public jsg::Object {
   // whose stream has not been read from answers from the source.
   kj::Maybe<uint64_t> tryGetBodyLength(jsg::Lock& js, StreamEncoding encoding);
 
+  // True for a null body: no stream and no source.
+  bool isNullBody() const;
+
+  // Sends the body to `sink` straight from its source (see BodySource::pumpTo()), if it has a
+  // source and has neither created its stream nor been read: takes `sink`, marks the body used, as
+  // pumping its stream would have, and returns the pump, which never begins deferred proxying.
+  // Otherwise returns kj::none, leaving `sink` to the caller to pump the body's stream into.
+  kj::Maybe<kj::Promise<DeferredProxy<void>>> tryDirectPump(
+      jsg::Lock& js, kj::Own<WritableStreamSink>& sink, TryWriteSync tryWriteSync);
+
   // ---------------------------------------------------------------------------
   // JS API
 
@@ -180,8 +190,8 @@ class Body: public jsg::Object {
   // stream when the stream is first needed, and again when the body is rewound.
   kj::Maybe<BodySource> bodySource;
 
-  // Set once the body is read straight from `bodySource`, before it has a stream. The body is
-  // then used, as reading its stream would have left it, and getBodyStream() creates the stream
+  // Set once the body is read or sent straight from `bodySource`, before it has a stream. The body
+  // is then used, as reading its stream would have left it, and getBodyStream() creates the stream
   // locked and disturbed.
   bool readFromSource = false;
 
@@ -197,9 +207,6 @@ class Body: public jsg::Object {
   // `limit` bytes, which marks the body read. kj::none for a longer body, which the caller reads
   // through its stream, to fail as any body over the limit does.
   kj::Maybe<BodySource&> tryReadFromSource(jsg::Lock& js, uint64_t limit) KJ_LIFETIMEBOUND;
-
-  // True for a null body: no stream and no source.
-  bool isNullBody() const;
 
   // Returns the buffering limit to apply when consuming the body. Deliberately not consulted for
   // null bodies: consuming a null body yields an empty result without any I/O, and must keep
