@@ -118,14 +118,26 @@ fn disconnected(what: impl Display) -> KjError {
 /// `workerd/api/http.c++` matches this text to report an invalid response.
 const INVALID_RESPONSE: &str = "The headers sent by the server are not valid.";
 
+/// What a request fails with, followed by the cause, when the connection for it couldn't be made
+/// and the I/O error behind that is FAILED, as a failed DNS lookup or TLS handshake is.
+/// `fetch()` in `workerd/api/http.c++` matches this text to report a network error.
+const CONNECT_FAILED: &str = "Could not connect to the server:";
+
 /// A request's failure: FAILED with kj's message for a response head that doesn't parse, the
-/// I/O error behind it when there is one, else DISCONNECTED (hyper reports a connection that
-/// went away in several shapes). A DISCONNECTED message names every cause: on its own,
-/// `hyper-util`'s error says only `client error (SendRequest)`.
+/// I/O error behind it when there is one (FAILED ones while connecting after [`CONNECT_FAILED`]),
+/// else DISCONNECTED (hyper reports a connection that went away in several shapes). A
+/// DISCONNECTED message names every cause: on its own, `hyper-util`'s error says only
+/// `client error (SendRequest)`.
 fn client_error(error: &(dyn Error + 'static)) -> KjError {
+    let connecting = error
+        .downcast_ref::<legacy::Error>()
+        .is_some_and(legacy::Error::is_connect);
     let mut source = Some(error);
     while let Some(e) = source {
         if let Some(io) = e.downcast_ref::<io::Error>() {
+            if connecting && kj_rs_io::exception_type(io) == KjExceptionType::Failed {
+                return failed(format_args!("{CONNECT_FAILED} {io}"));
+            }
             return io_kj_error(io);
         }
         if e.downcast_ref::<hyper::Error>()

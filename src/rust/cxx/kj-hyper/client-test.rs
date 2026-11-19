@@ -96,6 +96,39 @@ fn a_response_head_that_does_not_parse_fails_as_kj_does() {
     });
 }
 
+/// What a request fails with when its pool's dialer fails with `error`.
+fn dial_failure(error: fn() -> io::Error) -> KjError {
+    let table = HeaderTable::builtin();
+    let pool = ClientPool::new(ClientSettings::default(), Peer::Origin, move || {
+        let error = error();
+        async move { Err::<Dialed, _>(error) }
+    });
+    runtime()
+        .block_on(send(&pool.client(&table), http::Method::GET))
+        .unwrap_err()
+}
+
+#[test]
+fn a_failed_connection_names_its_cause() {
+    let error = dial_failure(|| io::Error::other("failed to lookup address information"));
+    assert_eq!(error.exception_type(), KjExceptionType::Failed);
+    assert_eq!(
+        error.description(),
+        format!("{CONNECT_FAILED} failed to lookup address information")
+    );
+}
+
+#[test]
+fn a_refused_connection_stays_disconnected() {
+    let error = dial_failure(|| io::Error::from(io::ErrorKind::ConnectionRefused));
+    assert_eq!(error.exception_type(), KjExceptionType::Disconnected);
+    assert!(
+        !error.description().starts_with(CONNECT_FAILED),
+        "{}",
+        error.description()
+    );
+}
+
 #[test]
 fn an_idle_connection_is_closed_after_the_idle_timeout() {
     let table = HeaderTable::builtin();
