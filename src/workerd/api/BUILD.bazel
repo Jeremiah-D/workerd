@@ -52,7 +52,6 @@ filegroup(
         "url-standard.c++",
         "web-socket.c++",
         "worker-rpc.c++",
-        "wrapped-binding.c++",
     ] + glob(
         [
             "crypto/*.c++",
@@ -61,6 +60,7 @@ filegroup(
         exclude = [
             "**/*test*.c++",
             "crypto/crc-impl.c++",
+            "crypto/endianness.c++",
             "streams/compression.c++",
             "streams/encoding.c++",
         ],
@@ -115,7 +115,6 @@ filegroup(
         "url-standard.h",
         "web-socket.h",
         "worker-rpc.h",
-        "wrapped-binding.h",
     ] + glob(
         [
             "crypto/*.h",
@@ -123,6 +122,7 @@ filegroup(
         ],
         exclude = [
             "crypto/crc-impl.h",
+            "crypto/endianness.h",
             "streams/compression.h",
             "streams/encoding.h",
         ],
@@ -241,6 +241,34 @@ wd_cc_library(
 )
 
 wd_cc_library(
+    name = "crypto-endianness",
+    srcs = [
+        "crypto/endianness.c++",
+    ],
+    hdrs = [
+        "crypto/endianness.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+wd_cc_library(
+    name = "wrapped-binding",
+    srcs = [
+        "wrapped-binding.c++",
+    ],
+    hdrs = [
+        "wrapped-binding.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/workerd/io",
+        "//src/workerd/io:worker-interface_capnp",
+        "//src/workerd/jsg",
+        "//src/workerd/jsg:url",
+    ],
+)
+
+wd_cc_library(
     name = "fuzzilli",
     srcs = [
         "fuzzilli.c++",
@@ -264,6 +292,7 @@ wd_cc_library(
         "kv.h",
     ],
     implementation_deps = [
+        "//src/workerd/util:http-util",
         "//src/workerd/util:mimetype",
     ],
     visibility = ["//visibility:public"],
@@ -410,6 +439,7 @@ wd_cc_library(
         ":memory-cache",
         ":r2",
         ":workers-module",
+        ":wrapped-binding",
         "//src/cloudflare",
         "//src/node",
         "//src/pyodide",
@@ -573,6 +603,7 @@ wd_cc_library(
         "//src/workerd/io:compatibility-date_capnp",
         "//src/workerd/jsg",
         "@capnp-cpp//src/kj",
+        "@capnp-cpp//src/kj/compat:kj-http",
     ],
 )
 
@@ -976,6 +1007,7 @@ kj_test(
 kj_test(
     src = "binding-snapshot-test.c++",
     deps = [
+        ":wrapped-binding",
         "//src/workerd/io",
         "//src/workerd/tests:test-fixture",
     ],

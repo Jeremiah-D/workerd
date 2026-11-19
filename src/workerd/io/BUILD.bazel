@@ -59,6 +59,30 @@ wd_cc_library(
 )
 
 wd_cc_library(
+    name = "access-info",
+    hdrs = ["access-info.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@capnp-cpp//src/kj",
+    ],
+)
+
+wd_cc_library(
+    name = "invocation-span",
+    srcs = ["invocation-span.c++"],
+    hdrs = ["invocation-span.h"],
+    implementation_deps = [
+        "//src/workerd/util:thread-scopes",
+        "@capnp-cpp//src/capnp/compat:json",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":outcome_capnp",
+        ":trace",
+    ],
+)
+
+wd_cc_library(
     name = "io",
     # HACK: Currently, the `io` and `api` packages are interdependent. We fold all the sources
     #   from `api` into `io`. In principle, it should be possible to pull them apart so `api`
@@ -70,7 +94,6 @@ wd_cc_library(
         "async-trace-promises.c++",
         "features.c++",
         "hibernation-manager.c++",
-        "invocation-span.c++",
         "io-channels.c++",
         "io-context.c++",
         "io-own.c++",
@@ -84,10 +107,8 @@ wd_cc_library(
         "worker-fs.c++",
     ] + ["//src/workerd/api:srcs"],
     hdrs = [
-        "access-info.h",
         "async-trace-promises.h",
         "hibernation-manager.h",
-        "invocation-span.h",
         "io-channels.h",
         "io-context.h",
         "io-own.h",
@@ -104,11 +125,13 @@ wd_cc_library(
         ":async-trace-inspector",
         ":async-trace-perfetto",
         ":async-trace-stacks",
+        ":invocation-span",
         "//src/per_isolate",
         "//src/rust/histogram",
         "//src/rust/jsg",
         "//src/workerd/api:compression",
         "//src/workerd/api:crypto-crc-impl",
+        "//src/workerd/api:crypto-endianness",
         "//src/workerd/api:data-url",
         "//src/workerd/api/node:exceptions",
         "//src/workerd/util:abortable",
@@ -126,6 +149,7 @@ wd_cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":access-info",
         ":actor",
         ":actor-id",
         ":actor-storage_capnp",
@@ -163,6 +187,7 @@ wd_cc_library(
         "//src/workerd/jsg:inspector",
         "//src/workerd/jsg:script",
         "//src/workerd/util:autogate",
+        "//src/workerd/util:canceler",
         "//src/workerd/util:checked-queue",
         "//src/workerd/util:consume",
         "//src/workerd/util:exception",
@@ -507,13 +532,19 @@ wd_cc_library(
 
 kj_test(
     src = "worker-interface-test.c++",
-    deps = [":worker-interface"],
+    deps = [
+        ":worker-interface",
+        "//src/workerd/util",
+    ],
 )
 
 wd_cc_benchmark(
     name = "bench-revocable-worker-interface",
     srcs = ["bench-revocable-worker-interface.c++"],
-    deps = [":worker-interface"],
+    deps = [
+        ":worker-interface",
+        "//src/workerd/util",
+    ],
 )
 
 wd_cc_library(
@@ -707,7 +738,7 @@ kj_test(
 kj_test(
     src = "invocation-span-test.c++",
     deps = [
-        ":io",
+        ":invocation-span",
         "//src/workerd/util:thread-scopes",
     ],
 )
