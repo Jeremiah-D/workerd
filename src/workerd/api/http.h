@@ -187,16 +187,16 @@ class Body: public jsg::Object {
 
   // Returns the body's stream, first creating it from `bodySource` if there is a source but no
   // stream yet. Returns a null stream for a null body.
-  JsReadableStream& getBodyStream(jsg::Lock& js);
+  JsReadableStream& getBodyStream(jsg::Lock& js) KJ_LIFETIMEBOUND;
 
   // The body's source, if the body has neither created its stream nor been read from the source,
   // so that reading the source now reads the whole body.
-  kj::Maybe<BodySource&> tryGetUnreadSource();
+  kj::Maybe<BodySource&> tryGetUnreadSource() KJ_LIFETIMEBOUND;
 
   // As tryGetUnreadSource(), but for a body that the caller reads straight from the source, within
   // `limit` bytes, which marks the body read. kj::none for a longer body, which the caller reads
   // through its stream, to fail as any body over the limit does.
-  kj::Maybe<BodySource&> tryReadFromSource(jsg::Lock& js, uint64_t limit);
+  kj::Maybe<BodySource&> tryReadFromSource(jsg::Lock& js, uint64_t limit) KJ_LIFETIMEBOUND;
 
   // True for a null body: no stream and no source.
   bool isNullBody() const;
