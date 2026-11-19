@@ -1543,6 +1543,18 @@ kj::Maybe<kj::StringPtr> invalidResponseReason(const kj::Exception& exception) {
   return kj::none;
 }
 
+// When the connection for a request couldn't be made, for example because its host didn't resolve
+// or its TLS handshake failed, the cause in the exception's description. kj-hyper
+// (src/rust/cxx/kj-hyper/client.rs) fails with this text followed by the cause.
+kj::Maybe<kj::StringPtr> connectFailureReason(const kj::Exception& exception) {
+  static constexpr kj::StringPtr CONNECT_FAILED = "Could not connect to the server: "_kj;
+  auto description = exception.getDescription();
+  KJ_IF_SOME(start, description.find(CONNECT_FAILED)) {
+    return description.slice(start + CONNECT_FAILED.size());
+  }
+  return kj::none;
+}
+
 // Setup spans stay on the native stack so that they finish before fetch returns its JS promise.
 // Keep the fetch span as the propagated parent of the outgoing request.
 class FetchSetupTrace {
@@ -2038,8 +2050,8 @@ jsg::Promise<jsg::Ref<Response>> fetchImplNoOutputLockAttempt(jsg::Lock& js,
       } else if (exception.getDescription().contains("NOSENTRY script not found")) {
         return JSG_KJ_EXCEPTION(FAILED, Error, "Worker not found.");
       }
-      // Fetch treats a response that doesn't parse as a network error, which rejects with a
-      // TypeError.
+      // Fetch treats a response that doesn't parse, or a connection that couldn't be made, as a
+      // network error, which rejects with a TypeError.
       auto networkError = [typeError](kj::StringPtr what, kj::StringPtr reason) {
         if (typeError) {
           return JSG_KJ_EXCEPTION(FAILED, TypeError, what, reason);
@@ -2048,6 +2060,9 @@ jsg::Promise<jsg::Ref<Response>> fetchImplNoOutputLockAttempt(jsg::Lock& js,
       };
       KJ_IF_SOME(reason, invalidResponseReason(exception)) {
         return networkError("Server returned invalid HTTP response: "_kj, reason);
+      }
+      KJ_IF_SOME(reason, connectFailureReason(exception)) {
+        return networkError("Network connection failed: "_kj, reason);
       }
       return kj::mv(exception);
     });
