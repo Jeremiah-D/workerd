@@ -578,10 +578,6 @@ impl Type for bool {
     fn class_name() -> &'static str {
         "boolean"
     }
-
-    fn is_exact(value: v8::Local<'_, v8::Value>) -> bool {
-        value.is_boolean()
-    }
 }
 
 impl<'s> ToJS<'s> for bool {
@@ -617,10 +613,6 @@ impl Type for std::string::String {
 
     fn class_name() -> &'static str {
         "string"
-    }
-
-    fn is_exact(value: v8::Local<'_, v8::Value>) -> bool {
-        value.is_string()
     }
 }
 
@@ -666,10 +658,6 @@ impl Type for f64 {
     fn class_name() -> &'static str {
         "number"
     }
-
-    fn is_exact(value: v8::Local<'_, v8::Value>) -> bool {
-        value.is_number()
-    }
 }
 
 impl<'s> ToJS<'s> for f64 {
@@ -712,10 +700,6 @@ impl Type for &str {
 
     fn class_name() -> &'static str {
         "string"
-    }
-
-    fn is_exact(value: v8::Local<'_, v8::Value>) -> bool {
-        value.is_string()
     }
 }
 
@@ -777,10 +761,6 @@ impl<T: Type> Type for &[T] {
     fn class_name() -> &'static str {
         "Array"
     }
-
-    fn is_exact(value: v8::Local<'_, v8::Value>) -> bool {
-        value.is_array()
-    }
 }
 
 impl<'s, T: Type + FromJS<'s, ResultType = T>> FromJS<'s> for &[T] {
@@ -825,10 +805,6 @@ macro_rules! impl_integer {
 
                 fn class_name() -> &'static str {
                     "number"
-                }
-
-                fn is_exact(value: v8::Local<'_, v8::Value>) -> bool {
-                    value.is_number()
                 }
             }
 
@@ -942,10 +918,6 @@ impl Type for i64 {
     fn class_name() -> &'static str {
         "bigint"
     }
-
-    fn is_exact(value: v8::Local<'_, v8::Value>) -> bool {
-        value.is_big_int()
-    }
 }
 
 // Like C++ JSG's int64_t (jsg/value.h), an i64 is a BigInt.
@@ -995,10 +967,6 @@ impl Type for u64 {
 
     fn class_name() -> &'static str {
         "bigint"
-    }
-
-    fn is_exact(value: v8::Local<'_, v8::Value>) -> bool {
-        value.is_big_int()
     }
 }
 
@@ -1059,10 +1027,6 @@ impl Type for std::time::SystemTime {
 
     fn class_name() -> &'static str {
         "Date"
-    }
-
-    fn is_exact(value: v8::Local<'_, v8::Value>) -> bool {
-        value.is_date()
     }
 }
 
@@ -1280,10 +1244,6 @@ impl<T: Coercible> Type for NonCoercible<T> {
     fn class_name() -> &'static str {
         T::class_name()
     }
-
-    fn is_exact(value: v8::Local<'_, v8::Value>) -> bool {
-        T::is_exact(value)
-    }
 }
 
 // Like C++ `NonCoercible<T>` (jsg/web-idl.h), this is the same kind of union
@@ -1292,7 +1252,7 @@ impl<'s, T: Coercible + FromJS<'s>> FromJS<'s> for NonCoercible<T> {
     type ResultType = NonCoercible<T::ResultType>;
 
     const UNION_MEMBER: UnionMember = T::UNION_MEMBER;
-    // Converts only a value that `T::is_exact()` accepts, which is never an object.
+    // Converts only a value that `Coercible::is_exact()` accepts, which is never an object.
     const OBJECT_CONVERSION_MAY_RUN_SCRIPT: bool = false;
 
     fn type_name() -> String {
@@ -1332,10 +1292,6 @@ impl<T: Type> Type for Nullable<T> {
 
     fn class_name() -> &'static str {
         T::class_name()
-    }
-
-    fn is_exact(value: v8::Local<'_, v8::Value>) -> bool {
-        value.is_null_or_undefined() || T::is_exact(value)
     }
 }
 
@@ -1453,10 +1409,6 @@ impl<T: Type> Type for Vec<T> {
 
     fn class_name() -> &'static str {
         "Array"
-    }
-
-    fn is_exact(value: v8::Local<'_, v8::Value>) -> bool {
-        value.is_array()
     }
 }
 
@@ -1579,10 +1531,6 @@ impl<V> Type for Dict<V> {
     fn class_name() -> &'static str {
         "object"
     }
-
-    fn is_exact(value: v8::Local<'_, v8::Value>) -> bool {
-        value.is_object() && !value.is_array()
-    }
 }
 
 impl<'s, V: ToJS<'s>> ToJS<'s> for Dict<V> {
@@ -1673,7 +1621,7 @@ impl<'s, V: FromJS<'s, ResultType = V>> FromJS<'s> for Dict<V> {
 // marker types implement `Type`, which names their JavaScript class.
 
 macro_rules! impl_typed_array_type {
-    ($($marker:ident => $is_check:ident),* $(,)?) => {
+    ($($marker:ident),* $(,)?) => {
         $(
             impl Type for v8::$marker {
                 const UNION_NAMES: &'static [&'static str] = &[concat!("v8::", stringify!($marker))];
@@ -1681,26 +1629,23 @@ macro_rules! impl_typed_array_type {
                 fn class_name() -> &'static str {
                     stringify!($marker)
                 }
-                fn is_exact(value: v8::Local<'_, v8::Value>) -> bool {
-                    value.$is_check()
-                }
             }
         )*
     };
 }
 
 impl_typed_array_type!(
-    Uint8Array => is_uint8_array,
-    Uint8ClampedArray => is_uint8clamped_array,
-    Uint16Array => is_uint16_array,
-    Uint32Array => is_uint32_array,
-    Int8Array => is_int8_array,
-    Int16Array => is_int16_array,
-    Int32Array => is_int32_array,
-    Float32Array => is_float32_array,
-    Float64Array => is_float64_array,
-    BigInt64Array => is_bigint64_array,
-    BigUint64Array => is_biguint64_array,
+    Uint8Array,
+    Uint8ClampedArray,
+    Uint16Array,
+    Uint32Array,
+    Int8Array,
+    Int16Array,
+    Int32Array,
+    Float32Array,
+    Float64Array,
+    BigInt64Array,
+    BigUint64Array,
 );
 
 // =============================================================================
@@ -1716,9 +1661,6 @@ impl Type for v8::ArrayBuffer {
     fn class_name() -> &'static str {
         "ArrayBuffer"
     }
-    fn is_exact(value: v8::Local<'_, v8::Value>) -> bool {
-        value.is_array_buffer()
-    }
 }
 
 impl Type for v8::ArrayBufferView {
@@ -1726,9 +1668,6 @@ impl Type for v8::ArrayBufferView {
 
     fn class_name() -> &'static str {
         "ArrayBufferView"
-    }
-    fn is_exact(value: v8::Local<'_, v8::Value>) -> bool {
-        value.is_array_buffer_view()
     }
 }
 
@@ -1768,16 +1707,12 @@ impl<M: Type> Type for v8::Local<'_, M> {
     fn class_name() -> &'static str {
         M::class_name()
     }
-
-    fn is_exact(value: v8::Local<'_, v8::Value>) -> bool {
-        M::is_exact(value)
-    }
 }
 
 /// Implements `Type` for handle markers. Their Web IDL categories are those that C++ JSG's
 /// `webidl` traits (jsg/web-idl.h) give the corresponding `v8::Local<T>`.
 macro_rules! impl_marker_type {
-    ($($marker:ident: $name:literal, $is_exact:ident, $types:expr;)*) => {
+    ($($marker:ident: $name:literal, $types:expr;)*) => {
         $(impl Type for v8::$marker {
             const UNION_TYPES: UnionTypes = $types;
             const UNION_NAMES: &'static [&'static str] = &[concat!("v8::", stringify!($marker))];
@@ -1785,22 +1720,18 @@ macro_rules! impl_marker_type {
             fn class_name() -> &'static str {
                 $name
             }
-
-            fn is_exact(value: v8::Local<'_, v8::Value>) -> bool {
-                value.$is_exact()
-            }
         })*
     };
 }
 
 impl_marker_type! {
-    String: "String", is_string, UnionTypes::STRING;
-    BigInt: "BigInt", is_big_int, UnionTypes::NUMERIC;
-    Object: "Object", is_object, UnionTypes::OBJECT;
-    Function: "Function", is_function, UnionTypes::OTHER;
-    Promise: "Promise", is_promise, UnionTypes::OTHER;
-    TypedArray: "TypedArray", is_typed_array, UnionTypes::OTHER;
-    WasmModuleObject: "WasmModuleObject", is_wasm_module_object, UnionTypes::OTHER;
+    String: "String", UnionTypes::STRING;
+    BigInt: "BigInt", UnionTypes::NUMERIC;
+    Object: "Object", UnionTypes::OBJECT;
+    Function: "Function", UnionTypes::OTHER;
+    Promise: "Promise", UnionTypes::OTHER;
+    TypedArray: "TypedArray", UnionTypes::OTHER;
+    WasmModuleObject: "WasmModuleObject", UnionTypes::OTHER;
 }
 
 // Any value is a `v8::Value`.
@@ -1809,10 +1740,6 @@ impl Type for v8::Value {
 
     fn class_name() -> &'static str {
         "Value"
-    }
-
-    fn is_exact(_value: v8::Local<'_, v8::Value>) -> bool {
-        true
     }
 }
 
@@ -1874,10 +1801,6 @@ impl<M: Type> Type for v8::TracedGlobal<M> {
 
     fn class_name() -> &'static str {
         M::class_name()
-    }
-
-    fn is_exact(value: v8::Local<'_, v8::Value>) -> bool {
-        M::is_exact(value)
     }
 }
 
