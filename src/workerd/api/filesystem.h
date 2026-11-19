@@ -125,7 +125,9 @@ class FileSystemModule final: public jsg::Object {
   uint32_t write(jsg::Lock& js, int fd, kj::Array<jsg::JsRef<jsg::JsBufferSource>> data, WriteOptions options);
   uint32_t read(jsg::Lock& js, int fd, kj::Array<jsg::JsRef<jsg::JsBufferSource>> data, WriteOptions options);
 
-  jsg::JsRef<jsg::JsUint8Array> readAll(jsg::Lock& js, kj::OneOf<int, FilePath> pathOrFd);
+  jsg::JsRef<jsg::JsUint8Array> readAll(jsg::Lock& js,
+      kj::OneOf<int, FilePath> pathOrFd,
+      jsg::Optional<kj::String> errorPath = kj::none);
 
   struct WriteAllOptions {
     bool exclusive;

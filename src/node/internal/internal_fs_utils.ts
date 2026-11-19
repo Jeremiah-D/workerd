@@ -70,6 +70,7 @@ import { strictEqual } from 'node-internal:internal_assert';
 
 import { Buffer } from 'node-internal:internal_buffer';
 import processImpl from 'node-internal:process';
+import { posix as pathPosix } from 'node-internal:internal_path';
 export type FilePath = string | URL | Buffer;
 
 import type {
@@ -178,6 +179,14 @@ export function normalizePath(
       ? 'file://'
       : (base ?? `file://${processImpl.getCwd()}/`)
   );
+}
+
+// Returns the path to report in an error for a string or Buffer path: the path
+// as written, resolved against the current working directory. normalizePath()'s
+// URL pathname can't be used for this, since it is percent-encoded.
+export function errorPath(path: FilePath): string | undefined {
+  if (path instanceof URL) return undefined;
+  return pathPosix.resolve(processImpl.getCwd(), path.toString());
 }
 
 export const kMaxUserId = 2 ** 32 - 1;

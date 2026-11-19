@@ -15,6 +15,7 @@ const cases = [
   ['rmdir', [M], 'ENOENT', M],
   ['mkdir', [`${M}/a`], 'ENOENT', `${M}/a`],
   ['readFile', [M], 'ENOENT', M],
+  ['readFile', [`${B}/a b%20\u00e5"/x`], 'ENOENT', `${B}/a b%20\u00e5"/x`],
   ['writeFile', [`${M}/a`, 'x'], 'ENOENT', `${M}/a`],
   ['rename', [M, `${B}/x`], 'ENOENT', M, `${B}/x`],
   ['copyFile', [M, `${B}/x`], 'ENOENT', M, `${B}/x`],

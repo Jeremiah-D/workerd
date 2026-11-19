@@ -29,6 +29,7 @@ import {
   getValidatedFd,
   validateBufferArray,
   normalizePath,
+  errorPath,
   getDate,
   Stats,
   kBadge,
@@ -603,7 +604,7 @@ export function readFileSync(
     if (typeof pathOrFd === 'number') {
       return cffs.readAll(getValidatedFd(pathOrFd));
     }
-    return cffs.readAll(normalizePath(pathOrFd));
+    return cffs.readAll(normalizePath(pathOrFd), errorPath(pathOrFd));
   })();
 
   const buf = Buffer.from(u8.buffer, u8.byteOffset, u8.byteLength);

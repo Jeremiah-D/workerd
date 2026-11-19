@@ -72,7 +72,7 @@ export function read(
   }
 ): number;
 
-export function readAll(pathOrFd: number | URL): Uint8Array;
+export function readAll(pathOrFd: number | URL, errorPath?: string): Uint8Array;
 
 export function writeAll(
   pathOrFd: number | URL,

@@ -636,12 +636,17 @@ uint32_t FileSystemModule::read(
 }
 
 jsg::JsRef<jsg::JsUint8Array> FileSystemModule::readAll(
-    jsg::Lock& js, kj::OneOf<int, FilePath> pathOrFd) {
+    jsg::Lock& js, kj::OneOf<int, FilePath> pathOrFd, jsg::Optional<kj::String> errorPath) {
   auto& vfs = workerd::VirtualFileSystem::current(js);
   KJ_SWITCH_ONEOF(pathOrFd) {
     KJ_CASE_ONEOF(path, FilePath) {
       NormalizedFilePath normalized(js, kj::mv(path));
-      auto errPath = [&] { return kj::str(normalized.url.getPathname()); };
+      auto errPath = [&] {
+        KJ_IF_SOME(p, errorPath) {
+          return kj::str(p);
+        }
+        return kj::str(normalized.url.getPathname());
+      };
       KJ_IF_SOME(node, vfs.resolve(js, normalized)) {
         KJ_SWITCH_ONEOF(node) {
           KJ_CASE_ONEOF(file, kj::Rc<workerd::File>) {
