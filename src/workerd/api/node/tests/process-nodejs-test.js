@@ -895,8 +895,7 @@ export const processLoadEnvFile = {
         assert.fail();
       } catch (e) {
         assert.strictEqual(e.code, 'ENOENT');
-        // TODO(soon): Enable once `path` is supported on ENOENT
-        // assert.strictEqual(e.path, '/bundle/.env');
+        assert.strictEqual(e.path, '/bundle/.env');
       }
     }
 
@@ -904,10 +903,10 @@ export const processLoadEnvFile = {
     {
       try {
         process.loadEnvFile(missingEnvFilePath);
+        assert.fail();
       } catch (e) {
         assert.strictEqual(e.code, 'ENOENT');
-        // TODO(soon): Enable once `path` is supported on ENOENT errors
-        // assert.strictEqual(e.path, missingEnvFile);
+        assert.strictEqual(e.path, missingEnvFilePath);
       }
     }
 
