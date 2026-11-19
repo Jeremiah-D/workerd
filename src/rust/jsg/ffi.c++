@@ -1052,12 +1052,6 @@ MaybeLocal wrap_resource(
   wrappable->attachWrapper(isolate, object, true,
       static_cast<v8::CppHeapPointerTag>(::workerd::jsg::kRustResourceWrappableTag));
 
-  // Override tag to identify as Rust object for unwrapping
-  auto tagAddress = const_cast<uint16_t*>(&::workerd::jsg::Wrappable::WORKERD_RUST_WRAPPABLE_TAG);
-  object->SetAlignedPointerInInternalField(::workerd::jsg::Wrappable::WRAPPABLE_TAG_FIELD_INDEX,
-      tagAddress,
-      static_cast<v8::EmbedderDataTypeTag>(::workerd::jsg::Wrappable::WRAPPABLE_TAG_FIELD_INDEX));
-
   return maybe_local_to_ffi(v8::MaybeLocal<v8::Value>(object));
 }
 
@@ -1077,12 +1071,6 @@ void wrappable_attach_wrapper(kj::Rc<Wrappable> wrappable, FunctionCallbackInfo&
   // attachWrapper sets up CppgcShim, TracedReference, internal fields, etc.
   wrappable->attachWrapper(isolate, object, true,
       static_cast<v8::CppHeapPointerTag>(::workerd::jsg::kRustResourceWrappableTag));
-
-  // Override tag to identify as Rust object for unwrapping
-  auto tagAddress = const_cast<uint16_t*>(&::workerd::jsg::Wrappable::WORKERD_RUST_WRAPPABLE_TAG);
-  object->SetAlignedPointerInInternalField(::workerd::jsg::Wrappable::WRAPPABLE_TAG_FIELD_INDEX,
-      tagAddress,
-      static_cast<v8::EmbedderDataTypeTag>(::workerd::jsg::Wrappable::WRAPPABLE_TAG_FIELD_INDEX));
 }
 
 MaybeLocal wrappable_attach_opaque_wrapper(Isolate* isolate, kj::Rc<Wrappable> wrappable) {
